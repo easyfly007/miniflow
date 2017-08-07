@@ -8,6 +8,12 @@ class Node(object):
 		for n in self.inbound_nodes:
 			n.outbound_nodes.append(self)
 		self.value = None
+		self.gradients = {}
+	
+	def forward(self):
+		raise NotImplementedError
+	def backward(self):
+		raise NotImplementedError
 
 
 class Input(Node):
@@ -17,6 +23,12 @@ class Input(Node):
 	def forward(self, value = None):
 		if value is not None:
 			self.value = value
+	def backward(self):
+		self.gradients = {self: 0}
+		for n in self.outbound_nodes:
+			grad_cost = n.gradients[self]
+			self.gradients[self] += grad_cost *1
+
 
 class Add(Node):
 	def __init__(self, x, y):
@@ -35,6 +47,42 @@ class Linear(Node):
 		w = np.array(self.inbound_nodes[1].value)
 		b = np.array(self.inbound_nodes[2].value)
 		self.value = np.dot(w, x) + b
+	def backward(self):
+		self.gradients = {n:np.zeros_like(n.value) for n in self.inbound_nodes}
+		for n in self.outbound_nodes:
+			grad_cost = n.gradients[self]
+			self.gradients[self.inbound_nodes[0]] += np.dot(grad_cost, self.inbound_nodes[1].value.T)
+			self.gradients[self.inbound_nodes[1]] += np.dot(self.inbound_nodes[0].value.T, grad_cost)
+			self.gradients[self.inbound_nodes[2]] += np.sum(grad_cost, axis = 0, keepdims = False)
+
+
+class Sigmoid(Node):
+	def __init__(self, x):
+		Node.__init__(self, [x])
+	def _sigmoid(self, x):
+		return 1.0/(1.0+ np.exp(-x))
+	def forward(self):
+		x = self.inbound_nodes[0].value
+		self.value = self._sigmoid(x)
+	def backward(self):
+		self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
+		for n in self.outbound_nodes:
+			grad_cost = n.gradients[self]
+			self.gradients[self.inbound_nodes[0]] = self.value * (1. - self.value) * grad_cost
+
+class MSE(Node):
+	def __init__(self, y, a):
+		Node.__init__(self, [y, a])
+	def forward(self):
+		y = self.inbound_nodes[0].value.reshape(-1, 1)
+		a = self.inbound_nodes[1].value.reshape(-1, 1)
+		self.m = self.inbound_nodes[0].value.shape[0]
+		self.diff = y - a
+		self.value = np.mean(self.diff ** 2)
+	def backward(self):
+		self.gradients[self.inbound_nodes[0]] = (2. / self.m) * self.diff
+		self.gradients[self.inbound_nodes[1]] = (-2 / self.m) * self.diff
+
 
 def forward_pass(output_node, sorted_nodes):
 	'''
@@ -49,6 +97,11 @@ def forward_pass(output_node, sorted_nodes):
 
 	return output_node.value
 
+def forward_and_backward(graph):
+	for n in graph:
+		n.forward()
+	for n in graph[::-1]:
+		n.backward()
 
 def topological_sort(feed_dict):
 	'''
