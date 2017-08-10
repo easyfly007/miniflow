@@ -68,17 +68,20 @@ class Sigmoid(Node):
 		self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
 		for n in self.outbound_nodes:
 			grad_cost = n.gradients[self]
-			self.gradients[self.inbound_nodes[0]] = self.value * (1. - self.value) * grad_cost
+			self.gradients[self.inbound_nodes[0]] += self.value * (1. - self.value) * grad_cost
+
 
 class MSE(Node):
 	def __init__(self, y, a):
 		Node.__init__(self, [y, a])
+
 	def forward(self):
 		y = self.inbound_nodes[0].value.reshape(-1, 1)
 		a = self.inbound_nodes[1].value.reshape(-1, 1)
 		self.m = self.inbound_nodes[0].value.shape[0]
 		self.diff = y - a
 		self.value = np.mean(self.diff ** 2)
+
 	def backward(self):
 		self.gradients[self.inbound_nodes[0]] = (2. / self.m) * self.diff
 		self.gradients[self.inbound_nodes[1]] = (-2 / self.m) * self.diff
@@ -102,6 +105,13 @@ def forward_and_backward(graph):
 		n.forward()
 	for n in graph[::-1]:
 		n.backward()
+
+
+def sgd_update(trainables, learning_rate = 1.0e-2):
+	for t in trainables:
+		t.value = - learning_rate * t.gradients[t]
+		
+
 
 def topological_sort(feed_dict):
 	'''
